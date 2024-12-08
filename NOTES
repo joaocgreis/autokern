@@ -1,0 +1,9 @@
+wsl convert -font Ormin-Regular.otf -pointsize 1000 'label:𐑪' a.png
+wsl convert -font Ormin-Regular.otf -pointsize 1000 'label:𐑐' a.png
+wsl convert -font Ormin-Regular.otf -pointsize 1000 'label:𐑬' a.png
+wsl convert -font Ormin-Regular.otf -pointsize 1000 'label:𐑺' a.png
+wsl convert -font Ormin-Regular.otf -pointsize 1000 'label:𐑗𐑨𐑐𐑑𐑼𐑰𐑒𐑦𐑙𐑤𐑬𐑛𐑤𐑦' a.png
+
+coffee -cm *.coffee lib/*.coffee && time node --enable-source-maps lib/kernalgorithm.js
+
+rm -f _* && coffee -cm *.coffee lib/*.coffee && time node --enable-source-maps index.js && (rm *.aux *.log > /dev/null)
