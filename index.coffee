@@ -41,7 +41,7 @@ kernAfter = (left, right, minpx, strid) ->
 console.log "Loading font information for '#{FONT}'..."
 fontdata = await fs.readFile FONT
 fontsha = require('crypto').createHash('sha1').update(fontdata).digest('hex')
-fontinfo = (require 'fonteditor-core').Font.create fontdata, {type: ((FONT.match /\.([a-z]*)$/i)[1])}
+fontinfo = (require 'fonteditor-core').Font.create fontdata, {type: ((FONT.match /\.([-_a-zA-Z0-9]*)$/i)[1])}
 fontinfo.chars = (Object.keys fontinfo.data.cmap).map (c) -> String.fromCodePoint c
 charlist = []
 charlist.push "#{JSON.stringify ch}\n" for ch in fontinfo.chars
@@ -142,5 +142,7 @@ t.push '---'
 t.push ''
 t.push fontinfo.chars.join ' '
 
-await texFile 'TESTER', "_tester_default", (t.join ' \n'), {}, FONT
-await texFile 'TESTER', "_tester_autokern", (t.join ' \n'), kernDefs, FONT
+genpdf = await texFile 'TESTER', "_tester_default", (t.join ' \n'), {}, FONT
+await fs.copyFile genpdf, "_tester_default.pdf"
+genpdf = await texFile 'TESTER', "_tester_autokern", (t.join ' \n'), kernDefs, FONT
+await fs.copyFile genpdf, "_tester_autokern.pdf"
