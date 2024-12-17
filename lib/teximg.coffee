@@ -26,6 +26,18 @@ kernStr = (defs) ->
     s.push " },\n"
     ret.push s.join ''
   ret.join ''
+kernFile = (file, defs) ->
+  await fs.writeFile file, """
+    \\directlua{
+    fonts.handlers.otf.addfeature{
+    name = "calculatedautokern",
+    type = "kern",
+    data =
+    {
+    #{kernStr defs}},
+    }
+    }
+    """
 texFile = (prefix, file, content, defs, FONT, small=false) ->
   content = (content
     .replaceAll /\\/ug, '\\textbackslash{}'
@@ -48,17 +60,7 @@ texFile = (prefix, file, content, defs, FONT, small=false) ->
     \\end{flushleft}
     \\end{document}
     """
-  await fs.writeFile "#{TMP_DIR}/#{file}_kern.tex", """
-    \\directlua{
-    fonts.handlers.otf.addfeature{
-    name = "calculatedautokern",
-    type = "kern",
-    data =
-    {
-    #{kernStr defs}},
-    }
-    }
-    """
+  await kernFile "#{TMP_DIR}/#{file}_kern.tex", defs
   await run prefix, "lualatex --halt-on-error #{file}.tex", { cwd: TMP_DIR }
   "#{TMP_DIR}/#{file}.pdf"
 toImg = (prefix, content, defs, f, FONT, fontsha, CACHE_DIR) ->
@@ -86,6 +88,6 @@ toImg = (prefix, content, defs, f, FONT, fontsha, CACHE_DIR) ->
 
 
 
-module.exports = { texFile, toImg }
+module.exports = { texFile, kernFile, toImg }
 if require.main is module
   console.log ''

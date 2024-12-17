@@ -7,3 +7,26 @@ wsl convert -font Ormin-Regular.otf -pointsize 1000 'label:𐑗𐑨𐑐𐑑𐑼�
 coffee -cm *.coffee lib/*.coffee && time node --enable-source-maps lib/kernalgorithm.js
 
 coffee -cm *.coffee lib/*.coffee && time node --enable-source-maps index.js
+
+
+
+
+TODO:
+Usar o centro de massa horizontal de cada caracter. Guardar apenas vectores com o left e o right.
+Ignorar os 10/15% de cima e de baixo da zona central.
+Como especifical espaços no latex?
+Ver bounding boxes por caracter, para suportar caracteres com várias areas.
+Considerar e atribuir pesos:
+- Pacing: tentar manter distancias entre centros de massa regulares.
+- Min: ter um mínimo para a separação (o que há agora)
+- Distância: calcular apenas distancias do left/right para cada ponto do outro caracter
+- Volume de espaço entre as letras: Só zona central? Retirar 10/15%? Só entre centros de massa?
+- Blur: When it's a blur, it should be homogeneous. Can we determine kerning by making the blur between the letters equal in weight? Area between the letters, from baseline to x-height, or just 1D in the center line?
+Edit font files directly / output as a font file.
+Algorithm params should be em or latex kern units, not pixels.
+Put params in a separate file. Make algorithm more generic.
+
+
+
+COMMON ISSUES / SAMPLES:
+𐑒𐑮𐑵 - o 𐑮 em muitas fontes fica muito para a esquerda
