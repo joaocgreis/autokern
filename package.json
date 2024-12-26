@@ -6,6 +6,7 @@
   "license": "MIT",
   "description": "Kerning experiments",
   "dependencies": {
+    "coffeescript": "^2.7.0",
     "fonteditor-core": "^2.4.1",
     "glur": "^1.1.2",
     "pngjs": "^7.0.0",

@@ -439,9 +439,11 @@ TSWLatexianTemp*
 #*Notes.bib
 
 
+*.ttf
+*.otf
 
-*.js
-*.js.map
+*_kern.json
+*.tex
 *.pdf
 
 _*

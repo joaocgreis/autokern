@@ -1,14 +1,21 @@
 fs = require 'node:fs/promises'
+path = require 'path'
 
 Image = require './lib/image'
 { texFile, kernFile, toImg } = require './lib/teximg'
 
 
 
+if process.argv.length isnt 3
+  console.error "Use:\nnode #{__dirname} FONT_FILE"
+  process.exit -1
+FONT = path.basename process.argv[2]
+
+
+
 CALIBRATION_LOW_KERN = 100
 CALIBRATION_HIGH_KERN = 2100
 RUN_KERN = CALIBRATION_HIGH_KERN
-FONT = 'Trabajo.otf'
 CACHE_DIR = 'cache'
 SHAVIANCHARS = [ ('𐑐'.codePointAt 0) .. ('𐑿'.codePointAt 0) ].map (c) -> String.fromCodePoint c
 KERNCHARS = SHAVIANCHARS
