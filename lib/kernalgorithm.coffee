@@ -1,13 +1,15 @@
+assert = require 'node:assert/strict'
+
 Image = require './image'
-{ toImg } = require './teximg'
+{ toImg, tmpPathJoin } = require './teximg'
 
 
 
-ALGO_DEBUG = false
+ALGO_DEBUG = true
 
 ALGO_BLUR = 10
 ALGO_THRESHOLD = 128
-ALGO_GROW = 50
+ALGO_GROW = 40
 ALGO_GROW_HADD = 0
 ALGO_GROW_HSTRECH = 2
 
@@ -27,21 +29,45 @@ kernWorker = (prefix, left, right, tmpf, RUN_KERN, FONT, fontsha, CACHE_DIR) ->
 
   ALGO_DEBUG and console.log 'kernWorker', JSON.stringify {jsonfilename, tmpf}
   img = await Image.loadJson jsonfilename
-
   ALGO_DEBUG and console.log "Processing #{img.filename}..."
+
   hA = img.hAreasImg()
   (hA.length isnt 2) and throw new Error "ERROR: hA.length isnt 2 #{JSON.stringify {hA,jsonfilename,tmpf}}"
   mid = Math.floor (hA[0].e + hA[1].s) / 2
-  img.blurImg ALGO_BLUR, ALGO_THRESHOLD
-  ALGO_DEBUG and await img.savePng "#{tmpf}_z0.png"
+  minpx = img.minHDistance mid
+  leftcenter = img.avgImgWeight mid
+  rightcenter = img.avgImgWeight 0, mid
+  centerpx = leftcenter - rightcenter
+
+  rowdiffs = (img.rowHDistance r, mid for r in [ 0 ... img.rows ])
+  min_i_row = 0
+  for r in [ 0 ... img.rows ]
+    break if rowdiffs[min_i_row] isnt -1
+    min_i_row++
+  assert min_i_row < img.rows
+  max_i_row = min_i_row
+  for r in [ min_i_row ... img.rows ]
+    break if rowdiffs[max_i_row] is -1
+    max_i_row++
+  assert max_i_row < img.rows
+  for r in [ max_i_row ... img.rows ]
+    assert rowdiffs[r] is -1
+
+  img.vline leftcenter
+  img.vline rightcenter
+  rowdiffs = (img.rowHDistance r, mid for r in [ 0 ... img.rows ])
+
+  # img.blurImg ALGO_BLUR, ALGO_THRESHOLD
+  # ALGO_DEBUG and await img.savePng tmpPathJoin "#{tmpf}_z0.png"
+
   img.growImg ALGO_GROW, ALGO_GROW_HADD, ALGO_GROW_HSTRECH
-  ALGO_DEBUG and await img.savePng "#{tmpf}_z1.png"
+  ALGO_DEBUG and await img.savePng tmpPathJoin "#{tmpf}_z1.png"
   hB = img.hAreasImg()
   (hB.length isnt 2) and throw new Error "ERROR: hB.length isnt 2 #{JSON.stringify {hA,mid,hB,jsonfilename,tmpf}}"
   not (hB[0].e < mid < hB[1].s) and throw new Error "ERROR: not (hB[0].e < mid < hB[1].s) #{JSON.stringify {hA,mid,hB,jsonfilename,tmpf}}"
-  minpx = img.minHDistance mid
-  #console.log {minpx}
-  minpx
+  grownpx = img.minHDistance mid
+
+  return { minpx, centerpx, grownpx, rowdiffs, min_i_row, max_i_row }
 
 
 

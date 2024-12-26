@@ -3,6 +3,26 @@ IntervalSet = require './intervalset'
 
 
 module.exports = class Image
+  @new: (rows, cols) ->
+    img = new Image()
+    img.rows = rows
+    img.cols = cols
+    img.data = (new IntervalSet() for _ in [ 0 ... rows ])
+    img.orig =
+      width: cols
+      height: rows
+      depth: 8
+      interlace: false
+      palette: false
+      color: true
+      alpha: false
+      bpp: 3
+      colorType: 2
+      data: []
+      gamma: 0
+    img.outdatedOrig = true
+    img
+
   updateOrig: (margin=0) =>
     if (not @outdatedOrig) and (@orig.width is (@cols - margin - margin))
       return this
@@ -70,6 +90,7 @@ module.exports = class Image
       throw err
     img.data = img.data.map (e) -> new IntervalSet e
     img.filename = filename
+    img.outdatedOrig = true
     img
 
   saveJson: (file) =>
@@ -89,10 +110,21 @@ module.exports = class Image
     @loadOrig 0, threshold
     this
 
-  growImg: (radius, hadd=0, hstretch=1) =>
+  xx_cache = {}
+  @xx = (radius, hadd=0, hstretch=1) ->
+    xx_cache_radius = xx_cache[radius]
+    xx_cache[radius] = xx_cache_radius = {} if not xx_cache_radius
+    xx_cache_hadd = xx_cache_radius[hadd]
+    xx_cache_radius[hadd] = xx_cache_hadd = {} if not xx_cache_hadd
+    return xx_cache_hadd[hstretch] if xx_cache_hadd[hstretch]
     xx = [ radius ]
     for y in [ 1 ... radius ]
-      xx.push Math.floor hadd + hstretch * Math.sqrt (radius * radius) - (y * y)
+      xx.push Math.floor hadd + hstretch * Math.sqrt ((radius+0.5) * (radius+0.5)) - (y * y)
+    xx_cache_hadd[hstretch] = xx
+    xx
+
+  growImg: (radius, hadd=0, hstretch=1) =>
+    xx = Image.xx radius, hadd, hstretch
     newData = (new IntervalSet() for _ in [ 0 ... @rows ])
     for r in [ 0 ... @rows ]
       @data[r].foreachInterval (s, e) =>
@@ -102,6 +134,48 @@ module.exports = class Image
           newData[ r + dy ].addInterval gstart, gend
     @outdatedOrig = true
     @data = newData
+    this
+
+  line: (row, start, end) =>
+    if row < 0 or row >= @rows
+      throw "ERROR: row=#{row} OOB rows=#{@rows}"
+    if start < 0
+      throw "ERROR: row=#{row} start=#{start} < 0"
+    if end < 0
+      throw "ERROR: row=#{row} end=#{end} < 0"
+    #console.log 'line', row, start, end
+    if end > @cols
+      #console.log "Expanding cols from #{@cols} to #{end}"
+      @cols = end
+    @data[row].addInterval start, end
+    @outdatedOrig = true
+    this
+  vline: (col, start=0, end=@rows) =>
+    if col < 0 or col >= @cols
+      throw "ERROR: col=#{col} OOB cols=#{@cols}"
+    if not (0 <= start < end <= @rows)
+      throw "ERROR: col=#{col} not (0 <= start=#{start} < end=#{end} <= @rows=#{@rows})"
+    for r in [ start ... end ]
+      @line r, col, col + 1
+    @outdatedOrig = true
+    this
+  
+  semiCircunference: (r, c, iradius, oradius, flipdown, flipleft, hadd=0, hstretch=1) =>
+    ixx = Image.xx iradius, hadd, hstretch
+    oxx = Image.xx oradius, hadd, hstretch
+    for dy in [ 0 ... oradius ]
+      ixxx = ixx[dy] or 0
+      oxxx = oxx[dy]
+      if not flipdown
+        dy = -dy
+      continue if ((r+dy) < 0) or ((r+dy) >= @rows)
+      if flipleft
+        [ ixxx, oxxx ] = [ -oxxx, -ixxx]
+      start = Math.max 0, c+ixxx
+      end = Math.max 0, c+oxxx
+      if c+oxxx >= 0
+        @line (r+dy), start, end
+    @outdatedOrig = true
     this
 
   hAreasImg: () =>
@@ -123,24 +197,32 @@ module.exports = class Image
   #     return null
   #   Math.floor (acc / div)
 
-  # avgImgWeight: (threshold) =>
-  #   acc = 0
-  #   div = 0
-  #   for r in [ 0 ... @rows ]
-  #     avgRow = @avgRowWeight r, threshold
-  #     if avgRow
-  #       acc += avgRow
-  #       div++
-  #   if div is 0
-  #     return null
-  #   Math.floor (acc / div)
+  avgImgWeight: (mins=0, maxe=@cols) =>
+    acc = 0
+    div = 0
+    for r in [ 0 ... @rows ]
+      @data[r].foreachInterval (s, e) =>
+        if mins <= s and e <= maxe
+          num = e - s
+          acc += (s + e - 1) * num / 2
+          div += num
+    if div is 0
+      return null
+    Math.floor (acc / div)
+
+  rowHDistance: (r, mid) =>
+    pos = @data[r].binarysearch_first_false (i) => @data[r].intset[ i + 1 ] < mid
+    if pos is 0 or pos is @data[r].intset.length
+      return -1
+    lc = @data[r].intset[ pos - 1 ]
+    rc = @data[r].intset[ pos ]
+    return rc - lc
 
   minHDistance: (mid) =>
     minpx = @cols
     for r in [ 0 ... @rows ]
-      pos = @data[r].binarysearch_first_false (i) => @data[r].intset[ i + 1 ] < mid
-      lc = if pos is 0 then 0 else @data[r].intset[ pos - 1 ]
-      rc = if pos is @data[r].intset.length then @cols else @data[r].intset[ pos ]
-      minpx = Math.min minpx, (rc-lc)
+      rd = @rowHDistance r, mid
+      if rd >=0
+        minpx = Math.min minpx, rd
     (minpx is @cols) and throw "ERROR: minpx is @cols (no intersection) #{JSON.stringify {hA,mid,hB,f:@filename}}"
     minpx

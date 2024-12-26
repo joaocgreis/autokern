@@ -8,12 +8,12 @@ Image = require './lib/image'
 CALIBRATION_LOW_KERN = 100
 CALIBRATION_HIGH_KERN = 2100
 RUN_KERN = CALIBRATION_HIGH_KERN
-FONT = 'Ormin-Regular.otf'
+FONT = 'Trabajo.otf'
 CACHE_DIR = 'cache'
 SHAVIANCHARS = [ ('𐑐'.codePointAt 0) .. ('𐑿'.codePointAt 0) ].map (c) -> String.fromCodePoint c
 KERNCHARS = SHAVIANCHARS
 
-ALGO_KEEP_POS = false
+ALGO_KEEP_POS = true
 
 
 
@@ -24,12 +24,12 @@ kernSet = (left, right, kern) ->
     leftMap = {}
     kernDefs[left] = leftMap
   leftMap[right] = kern
-kernAfter = (left, right, minpx, strid) ->
+kernAfter = (left, right, strid, kernpx) ->
   (not left) and throw "ERROR: result missing expected left #{JSON.stringify result}"
   (not right) and throw "ERROR: result missing expected right #{JSON.stringify result}"
-  (not minpx) and throw "ERROR: result missing expected minpx #{JSON.stringify result}"
   (not strid) and throw "ERROR: result missing expected strid #{JSON.stringify result}"
-  kern = RUN_KERN - (minpx / CALIBRATION_PX_PER_KERN)
+  (not kernpx) and throw "ERROR: result missing expected kernpx #{JSON.stringify result}"
+  kern = RUN_KERN - (kernpx / CALIBRATION_PX_PER_KERN)
   if ALGO_KEEP_POS or kern < 0
     kernSet left, right, kern
     console.log "(#{strid}) Kerning between #{left} and #{right} : #{kern}"
@@ -76,23 +76,67 @@ pool = workerpool.pool './worker.js', { workerType: 'process' }
 { kernWorker } = await pool.proxy()
 # { kernWorker } = require './lib/kernalgorithm'
 
+# console.log pool.stats()
+# setInterval (->
+#   console.log pool.stats()
+# ), 1000
+
 progress_i = 0
-await Promise.all (
+worker_results = await Promise.all (
   for left in KERNCHARS
     for right in KERNCHARS
       do (left, right, this_i = progress_i++) ->
         strid = "#{1 + this_i}/#{KERNCHARS.length * KERNCHARS.length}"
-        minpx = await kernWorker strid, left, right, "_f_#{this_i}", RUN_KERN, FONT, fontsha, CACHE_DIR
-        #console.log {minpx}
-        kernAfter left, right, minpx, strid
+        worker_res = await kernWorker strid, left, right, "_f_#{this_i}", RUN_KERN, FONT, fontsha, CACHE_DIR
+        # kernAfter left, right, worker_res.kernpx, strid
+        # console.log "(#{strid}) #{JSON.stringify worker_res}"
+        console.log "(#{strid}) Processed."
+        return { left, right, strid, worker_res }
 ).flat()
 
 pool.terminate()
 
+g_diffpx = []
+g_min_i_row = worker_results[0].worker_res.min_i_row
+g_max_i_row = worker_results[0].worker_res.max_i_row
+for { left, right, strid, worker_res } in worker_results
+  { minpx, centerpx, grownpx, rowdiffs, min_i_row, max_i_row } = worker_res
+  g_diffpx.push centerpx - grownpx
+  g_min_i_row = Math.max g_min_i_row, min_i_row
+  g_max_i_row = Math.min g_max_i_row, max_i_row
+console.log {g_min_i_row, g_max_i_row}
+if not (g_min_i_row < g_max_i_row)
+  throw "not (g_min_i_row < g_max_i_row)"
+
+g_max_area = 0
+g_areas = []
+for { left, right, strid, worker_res } in worker_results
+  { minpx, centerpx, grownpx, rowdiffs, min_i_row, max_i_row } = worker_res
+  area_acc = 0
+  for rd in rowdiffs[ g_min_i_row ... g_max_i_row ]
+    area_acc += rd - minpx
+  worker_res.area = area_acc
+  g_areas.push area_acc
+  g_max_area = Math.max g_max_area, area_acc
+console.log {g_max_area}
+
+g_diffpx = g_diffpx.sort()
+min_diffpx = g_diffpx[Math.floor g_diffpx.length / 2]
+console.log {min_diffpx}
+g_areas = g_areas.sort()
+g_use_area = g_areas[Math.floor g_areas.length * 5 / 6]
+console.log {g_use_area}
+for { left, right, strid, worker_res } in worker_results
+  { minpx, centerpx, grownpx, rowdiffs, min_i_row, max_i_row, area } = worker_res
+  #kernpx = centerpx - Math.max min_diffpx, centerpx - grownpx
+  kernpx = Math.min grownpx, minpx - Math.floor (Math.max 0, g_use_area - area) / (g_max_i_row - g_min_i_row)
+  kernAfter left, right, strid, kernpx
 
 
-await fs.writeFile "_kern.json", JSON.stringify kernDefs, null, 2
-# kernDefs = JSON.parse await fs.readFile "_kern.json", 'utf8'
+
+
+await fs.writeFile "#{FONT}_kern.json", JSON.stringify kernDefs, null, 2
+# kernDefs = JSON.parse await fs.readFile "#{FONT}_kern.json", 'utf8'
 
 
 
@@ -111,7 +155,7 @@ t=[]
 
 t.push 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc laoreet purus nisi, id fermentum nisl convallis mollis. Vivamus suscipit gravida nisl et consequat. Vestibulum pharetra eu turpis ac lacinia. Curabitur lacinia magna at odio blandit, eu sollicitudin augue consequat. Mauris pulvinar velit nec ligula molestie pulvinar. Phasellus ut mollis orci. In at mollis ante. In vitae lacinia nulla. Nunc vel dignissim odio. Ut at pellentesque nulla. Fusce semper auctor dui ac ultricies. Pellentesque eget nunc non diam molestie placerat.'
 t.push ''
-t.push '·𐑖𐑻𐑤𐑪𐑒 𐑣𐑴𐑥𐑟 𐑖𐑰 𐑦𐑟 𐑷𐑤𐑢𐑱𐑟 𐑞 𐑢𐑫𐑥𐑩𐑯. 𐑲 𐑣𐑨𐑝 𐑕𐑧𐑤𐑛𐑩𐑥 𐑣𐑻𐑛 𐑣𐑦𐑥 𐑥𐑧𐑯𐑖𐑩𐑯 𐑣𐑻 𐑳𐑯𐑛𐑼 𐑧𐑯𐑦 𐑳𐑞𐑼 𐑯𐑱𐑥. 𐑦𐑯 𐑣𐑦𐑟 𐑲𐑟 𐑖𐑰 𐑦𐑒𐑤𐑦𐑐𐑕𐑩𐑟 𐑯 𐑐𐑮𐑦𐑛𐑪𐑥𐑦𐑯𐑱𐑑𐑕 𐑞 𐑣𐑴𐑤 𐑝 𐑣𐑻 𐑕𐑧𐑒𐑕. 𐑦𐑑 𐑢𐑪𐑟 𐑯𐑪𐑑 𐑞𐑨𐑑 𐑣𐑰 𐑓𐑧𐑤𐑑 𐑧𐑯𐑦 𐑦𐑥𐑴𐑖𐑩𐑯 𐑩𐑒𐑦𐑯 𐑑 𐑤𐑳𐑝 𐑓 ·𐑲𐑮𐑰𐑯 𐑨𐑛𐑤𐑼. 𐑷𐑤 𐑦𐑥𐑴𐑖𐑩𐑯𐑟, 𐑯 𐑞𐑨𐑑 𐑢𐑳𐑯 𐑐𐑼𐑑𐑦𐑒𐑘𐑩𐑤𐑼𐑤𐑦, 𐑢𐑻 𐑩𐑚𐑣𐑪𐑮𐑩𐑯𐑑 𐑑 𐑣𐑦𐑟 𐑒𐑴𐑤𐑛, 𐑐𐑮𐑦𐑕𐑲𐑕 𐑚𐑳𐑑 𐑨𐑛𐑥𐑼𐑩𐑚𐑤𐑦 𐑚𐑨𐑤𐑩𐑯𐑕𐑑 𐑥𐑲𐑯𐑛. 𐑣𐑰 𐑢𐑪𐑟, 𐑲 𐑑𐑱𐑒 𐑦𐑑, 𐑞 𐑥𐑴𐑕𐑑 𐑐𐑻𐑓𐑦𐑒𐑑 𐑮𐑰𐑟𐑩𐑯𐑦𐑙 𐑯 𐑩𐑚𐑟𐑻𐑝𐑦𐑙 𐑥𐑩𐑖𐑰𐑯 𐑞𐑨𐑑 𐑞 𐑢𐑻𐑤𐑛 𐑣𐑨𐑟 𐑕𐑰𐑯, 𐑚𐑳𐑑 𐑨𐑟 𐑩 𐑤𐑳𐑝𐑼 𐑣𐑰 𐑢𐑫𐑛 𐑣𐑨𐑝 𐑐𐑤𐑱𐑕𐑑 𐑣𐑦𐑥𐑕𐑧𐑤𐑓 𐑦𐑯 𐑩 𐑓𐑷𐑤𐑕 𐑐𐑩𐑟𐑦𐑖𐑩𐑯. 𐑣𐑰 𐑯𐑧𐑝𐑼 𐑕𐑐𐑴𐑒 𐑝 𐑞 𐑕𐑪𐑓𐑑𐑼 𐑐𐑨𐑖𐑩𐑯𐑟, 𐑕𐑱𐑝 𐑢𐑦𐑞 𐑩 𐑡𐑲𐑚 𐑯 𐑩 𐑕𐑯𐑽. 𐑞𐑱 𐑢𐑻 𐑨𐑛𐑥𐑼𐑩𐑚𐑩𐑤 𐑔𐑦𐑙𐑟 𐑓 𐑞 𐑩𐑚𐑟𐑻𐑝𐑼—𐑧𐑒𐑕𐑩𐑤𐑩𐑯𐑑 𐑓 𐑛𐑮𐑷𐑦𐑙 𐑞 𐑝𐑱𐑤 𐑓𐑮𐑪𐑥 𐑥𐑧𐑯𐑟 𐑥𐑴𐑑𐑦𐑝𐑟 𐑯 𐑨𐑒𐑖𐑩𐑯𐑟. 𐑚𐑳𐑑 𐑓 𐑞 𐑑𐑮𐑱𐑯𐑛 𐑮𐑰𐑟𐑩𐑯𐑼 𐑑 𐑩𐑛𐑥𐑦𐑑 𐑕𐑳𐑗 𐑦𐑯𐑑𐑮𐑵𐑠𐑩𐑯𐑟 𐑦𐑯𐑑𐑵 𐑣𐑦𐑟 𐑴𐑯 𐑛𐑧𐑤𐑦𐑒𐑩𐑑 𐑯 𐑓𐑲𐑯𐑤𐑦 𐑩𐑡𐑳𐑕𐑑𐑩𐑛 𐑑𐑧𐑥𐑐𐑼𐑩𐑥𐑩𐑯𐑑 𐑢𐑪𐑟 𐑑 𐑦𐑯𐑑𐑮𐑩𐑛𐑿𐑕 𐑩 𐑛𐑦𐑕𐑑𐑮𐑨𐑒𐑑𐑦𐑙 𐑓𐑨𐑒𐑑𐑼 𐑢𐑦𐑗 𐑥𐑲𐑑 𐑔𐑮𐑴 𐑩 𐑛𐑬𐑑 𐑩𐑐𐑪𐑯 𐑷𐑤 𐑣𐑦𐑟 𐑥𐑧𐑯𐑑𐑩𐑤 𐑮𐑦𐑟𐑳𐑤𐑑𐑕. 𐑜𐑮𐑦𐑑 𐑦𐑯 𐑩 𐑕𐑧𐑯𐑕𐑦𐑑𐑦𐑝 𐑦𐑯𐑕𐑑𐑮𐑩𐑥𐑩𐑯𐑑, 𐑹 𐑩 𐑒𐑮𐑨𐑒 𐑦𐑯 𐑢𐑳𐑯 𐑝 𐑣𐑦𐑟 𐑴𐑯 𐑣𐑲-𐑐𐑬𐑼 𐑤𐑧𐑯𐑟𐑩𐑟, 𐑢𐑫𐑛 𐑯𐑪𐑑 𐑚𐑰 𐑥𐑹 𐑛𐑦𐑕𐑑𐑻𐑚𐑦𐑙 𐑞𐑨𐑯 𐑩 𐑕𐑑𐑮𐑪𐑙 𐑦𐑥𐑴𐑖𐑩𐑯 𐑦𐑯 𐑩 𐑯𐑱𐑗𐑼 𐑕𐑳𐑗 𐑨𐑟 𐑣𐑦𐑟. 𐑯 𐑘𐑧𐑑 𐑞𐑺 𐑢𐑪𐑟 𐑚𐑳𐑑 𐑢𐑳𐑯 𐑢𐑫𐑥𐑩𐑯 𐑑 𐑣𐑦𐑥, 𐑯 𐑞𐑨𐑑 𐑢𐑫𐑥𐑩𐑯 𐑢𐑪𐑟 𐑞 𐑤𐑱𐑑 ·𐑲𐑮𐑰𐑯 𐑨𐑛𐑤𐑼, 𐑝 𐑛𐑿𐑚𐑾𐑕 𐑯 𐑒𐑢𐑧𐑕𐑗𐑩𐑯𐑩𐑚𐑩𐑤 𐑥𐑧𐑥𐑼𐑦.'
+t.push '𐑑 ·𐑖𐑻𐑤𐑪𐑒 𐑣𐑴𐑥𐑟 𐑖𐑰 𐑦𐑟 𐑷𐑤𐑢𐑱𐑟 𐑞 𐑢𐑫𐑥𐑩𐑯. 𐑲 𐑣𐑨𐑝 𐑕𐑧𐑤𐑛𐑩𐑥 𐑣𐑻𐑛 𐑣𐑦𐑥 𐑥𐑧𐑯𐑖𐑩𐑯 𐑣𐑻 𐑳𐑯𐑛𐑼 𐑧𐑯𐑦 𐑳𐑞𐑼 𐑯𐑱𐑥. 𐑦𐑯 𐑣𐑦𐑟 𐑲𐑟 𐑖𐑰 𐑦𐑒𐑤𐑦𐑐𐑕𐑩𐑟 𐑯 𐑐𐑮𐑦𐑛𐑪𐑥𐑦𐑯𐑱𐑑𐑕 𐑞 𐑣𐑴𐑤 𐑝 𐑣𐑻 𐑕𐑧𐑒𐑕. 𐑦𐑑 𐑢𐑪𐑟 𐑯𐑪𐑑 𐑞𐑨𐑑 𐑣𐑰 𐑓𐑧𐑤𐑑 𐑧𐑯𐑦 𐑦𐑥𐑴𐑖𐑩𐑯 𐑩𐑒𐑦𐑯 𐑑 𐑤𐑳𐑝 𐑓 ·𐑲𐑮𐑰𐑯 𐑨𐑛𐑤𐑼. 𐑷𐑤 𐑦𐑥𐑴𐑖𐑩𐑯𐑟, 𐑯 𐑞𐑨𐑑 𐑢𐑳𐑯 𐑐𐑼𐑑𐑦𐑒𐑘𐑩𐑤𐑼𐑤𐑦, 𐑢𐑻 𐑩𐑚𐑣𐑪𐑮𐑩𐑯𐑑 𐑑 𐑣𐑦𐑟 𐑒𐑴𐑤𐑛, 𐑐𐑮𐑦𐑕𐑲𐑕 𐑚𐑳𐑑 𐑨𐑛𐑥𐑼𐑩𐑚𐑤𐑦 𐑚𐑨𐑤𐑩𐑯𐑕𐑑 𐑥𐑲𐑯𐑛. 𐑣𐑰 𐑢𐑪𐑟, 𐑲 𐑑𐑱𐑒 𐑦𐑑, 𐑞 𐑥𐑴𐑕𐑑 𐑐𐑻𐑓𐑦𐑒𐑑 𐑮𐑰𐑟𐑩𐑯𐑦𐑙 𐑯 𐑩𐑚𐑟𐑻𐑝𐑦𐑙 𐑥𐑩𐑖𐑰𐑯 𐑞𐑨𐑑 𐑞 𐑢𐑻𐑤𐑛 𐑣𐑨𐑟 𐑕𐑰𐑯, 𐑚𐑳𐑑 𐑨𐑟 𐑩 𐑤𐑳𐑝𐑼 𐑣𐑰 𐑢𐑫𐑛 𐑣𐑨𐑝 𐑐𐑤𐑱𐑕𐑑 𐑣𐑦𐑥𐑕𐑧𐑤𐑓 𐑦𐑯 𐑩 𐑓𐑷𐑤𐑕 𐑐𐑩𐑟𐑦𐑖𐑩𐑯. 𐑣𐑰 𐑯𐑧𐑝𐑼 𐑕𐑐𐑴𐑒 𐑝 𐑞 𐑕𐑪𐑓𐑑𐑼 𐑐𐑨𐑖𐑩𐑯𐑟, 𐑕𐑱𐑝 𐑢𐑦𐑞 𐑩 𐑡𐑲𐑚 𐑯 𐑩 𐑕𐑯𐑽. 𐑞𐑱 𐑢𐑻 𐑨𐑛𐑥𐑼𐑩𐑚𐑩𐑤 𐑔𐑦𐑙𐑟 𐑓 𐑞 𐑩𐑚𐑟𐑻𐑝𐑼—𐑧𐑒𐑕𐑩𐑤𐑩𐑯𐑑 𐑓 𐑛𐑮𐑷𐑦𐑙 𐑞 𐑝𐑱𐑤 𐑓𐑮𐑪𐑥 𐑥𐑧𐑯𐑟 𐑥𐑴𐑑𐑦𐑝𐑟 𐑯 𐑨𐑒𐑖𐑩𐑯𐑟. 𐑚𐑳𐑑 𐑓 𐑞 𐑑𐑮𐑱𐑯𐑛 𐑮𐑰𐑟𐑩𐑯𐑼 𐑑 𐑩𐑛𐑥𐑦𐑑 𐑕𐑳𐑗 𐑦𐑯𐑑𐑮𐑵𐑠𐑩𐑯𐑟 𐑦𐑯𐑑𐑵 𐑣𐑦𐑟 𐑴𐑯 𐑛𐑧𐑤𐑦𐑒𐑩𐑑 𐑯 𐑓𐑲𐑯𐑤𐑦 𐑩𐑡𐑳𐑕𐑑𐑩𐑛 𐑑𐑧𐑥𐑐𐑼𐑩𐑥𐑩𐑯𐑑 𐑢𐑪𐑟 𐑑 𐑦𐑯𐑑𐑮𐑩𐑛𐑿𐑕 𐑩 𐑛𐑦𐑕𐑑𐑮𐑨𐑒𐑑𐑦𐑙 𐑓𐑨𐑒𐑑𐑼 𐑢𐑦𐑗 𐑥𐑲𐑑 𐑔𐑮𐑴 𐑩 𐑛𐑬𐑑 𐑩𐑐𐑪𐑯 𐑷𐑤 𐑣𐑦𐑟 𐑥𐑧𐑯𐑑𐑩𐑤 𐑮𐑦𐑟𐑳𐑤𐑑𐑕. 𐑜𐑮𐑦𐑑 𐑦𐑯 𐑩 𐑕𐑧𐑯𐑕𐑦𐑑𐑦𐑝 𐑦𐑯𐑕𐑑𐑮𐑩𐑥𐑩𐑯𐑑, 𐑹 𐑩 𐑒𐑮𐑨𐑒 𐑦𐑯 𐑢𐑳𐑯 𐑝 𐑣𐑦𐑟 𐑴𐑯 𐑣𐑲-𐑐𐑬𐑼 𐑤𐑧𐑯𐑟𐑩𐑟, 𐑢𐑫𐑛 𐑯𐑪𐑑 𐑚𐑰 𐑥𐑹 𐑛𐑦𐑕𐑑𐑻𐑚𐑦𐑙 𐑞𐑨𐑯 𐑩 𐑕𐑑𐑮𐑪𐑙 𐑦𐑥𐑴𐑖𐑩𐑯 𐑦𐑯 𐑩 𐑯𐑱𐑗𐑼 𐑕𐑳𐑗 𐑨𐑟 𐑣𐑦𐑟. 𐑯 𐑘𐑧𐑑 𐑞𐑺 𐑢𐑪𐑟 𐑚𐑳𐑑 𐑢𐑳𐑯 𐑢𐑫𐑥𐑩𐑯 𐑑 𐑣𐑦𐑥, 𐑯 𐑞𐑨𐑑 𐑢𐑫𐑥𐑩𐑯 𐑢𐑪𐑟 𐑞 𐑤𐑱𐑑 ·𐑲𐑮𐑰𐑯 𐑨𐑛𐑤𐑼, 𐑝 𐑛𐑿𐑚𐑾𐑕 𐑯 𐑒𐑢𐑧𐑕𐑗𐑩𐑯𐑩𐑚𐑩𐑤 𐑥𐑧𐑥𐑼𐑦.'
 t.push ''
 
 t.push '---'
@@ -150,7 +194,7 @@ t.push ''
 t.push fontinfo.chars.join ' '
 
 genpdf = await texFile 'TESTER', "_tester_default", (t.join ' \n'), {}, FONT
-await fs.copyFile genpdf, "_tester_default.pdf"
+await fs.copyFile genpdf, "#{FONT}_tester_default.pdf"
 genpdf = await texFile 'TESTER', "_tester_autokern", (t.join ' \n'), kernDefs, FONT
-await fs.copyFile genpdf, "_tester_autokern.pdf"
-await kernFile "_kern.tex", kernDefs
+await fs.copyFile genpdf, "#{FONT}_tester_autokern.pdf"
+await kernFile "#{FONT}_kern.tex", kernDefs

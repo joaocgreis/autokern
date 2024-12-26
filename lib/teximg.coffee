@@ -1,4 +1,5 @@
 fs = require 'node:fs/promises'
+fsold = require 'fs'
 util = require 'node:util'
 exec = util.promisify (require 'node:child_process').exec
 run = (prefix, a, b={}) ->
@@ -9,9 +10,11 @@ Image = require './image'
 
 
 
+RUN_PREFIX = ''
 PNGCONV_DENSITY = 5000
-PNGCONV_ZOOM = 100
+PNGCONV_ZOOM = 200
 TMP_DIR = '_tmp'
+fsold.mkdirSync TMP_DIR, { recursive: true }
 
 
 
@@ -44,7 +47,6 @@ texFile = (prefix, file, content, defs, FONT, small=false) ->
     .replaceAll /([{}%$&_#])/ug, '\\$1'
     .replaceAll /([~^])/ug, '\\$1{}'
   )
-  await fs.mkdir TMP_DIR, { recursive: true }
   fontext = (FONT.match /\.([-_a-zA-Z0-9]*)$/i)[1]
   await fs.copyFile FONT, "#{TMP_DIR}/#{file}.#{fontext}"
   await fs.writeFile "#{TMP_DIR}/#{file}.tex", """
@@ -61,22 +63,23 @@ texFile = (prefix, file, content, defs, FONT, small=false) ->
     \\end{document}
     """
   await kernFile "#{TMP_DIR}/#{file}_kern.tex", defs
-  await run prefix, "lualatex --halt-on-error #{file}.tex", { cwd: TMP_DIR }
+  await run prefix, "#{RUN_PREFIX}lualatex --halt-on-error #{file}.tex", { cwd: TMP_DIR }
   "#{TMP_DIR}/#{file}.pdf"
 toImg = (prefix, content, defs, f, FONT, fontsha, CACHE_DIR) ->
   contentsha = Buffer.from(content, 'utf8').toString('hex')
-  defssha = Buffer.from((JSON.stringify defs), 'utf8').toString('hex')
+  defssha = Buffer.from((JSON.stringify defs)+PNGCONV_ZOOM, 'utf8').toString('hex')
   cache_file_name = "#{fontsha}_#{contentsha}_#{defssha}.json"
   cache_full_file_name = "#{CACHE_DIR}/#{cache_file_name}"
   try
     await fs.access cache_full_file_name, fs.constants.R_OK
+    # console.log 'HIT', cache_full_file_name, prefix, content, defs, f, FONT, fontsha, CACHE_DIR
     return cache_full_file_name
+  # console.log 'MISS', cache_full_file_name, prefix, content, defs, f, FONT, fontsha, CACHE_DIR
 
-  await fs.mkdir TMP_DIR, { recursive: true }
   genpdf = await texFile prefix, f, content, defs, FONT, true
   #await run "convert -background white -alpha remove -alpha off -density #{PNGCONV_DENSITY} #{genpdf} #{TMP_DIR}/#{f}.png"
-  await run prefix, "pdf2svg  #{genpdf} #{TMP_DIR}/#{f}.svg"
-  await run prefix, "rsvg-convert -z #{PNGCONV_ZOOM} -b white #{TMP_DIR}/#{f}.svg -o #{TMP_DIR}/#{f}.png"
+  await run prefix, "#{RUN_PREFIX}pdf2svg  #{genpdf} #{TMP_DIR}/#{f}.svg"
+  await run prefix, "#{RUN_PREFIX}rsvg-convert -z #{PNGCONV_ZOOM} -b white #{TMP_DIR}/#{f}.svg -o #{TMP_DIR}/#{f}.png"
 
   img = await Image.loadPng "#{TMP_DIR}/#{f}.png"
   await img.saveJson "#{TMP_DIR}/#{f}.json"
@@ -86,8 +89,9 @@ toImg = (prefix, content, defs, f, FONT, fontsha, CACHE_DIR) ->
     await fs.copyFile "#{TMP_DIR}/#{f}.json", cache_full_file_name
   return "#{TMP_DIR}/#{f}.json"
 
+tmpPathJoin = (file) -> "#{TMP_DIR}/#{file}"
 
 
-module.exports = { texFile, kernFile, toImg }
+module.exports = { texFile, kernFile, toImg, tmpPathJoin }
 if require.main is module
   console.log ''
