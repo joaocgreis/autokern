@@ -1,6 +1,6 @@
 assert = require 'node:assert/strict'
 
-Image = require './image'
+Image = require './Image'
 { toImg, tmpPathJoin } = require './teximg'
 
 

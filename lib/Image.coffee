@@ -1,4 +1,4 @@
-IntervalSet = require './intervalset'
+IntervalSet = require './IntervalSet'
 
 
 

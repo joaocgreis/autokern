@@ -1,7 +1,7 @@
 fs = require 'node:fs/promises'
 path = require 'path'
 
-Image = require './lib/image'
+Image = require './lib/Image'
 { texFile, kernFile, toImg } = require './lib/teximg'
 
 

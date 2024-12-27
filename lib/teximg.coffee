@@ -6,7 +6,7 @@ run = (prefix, a, b={}) ->
   console.log "(#{prefix}) #{a}"
   await exec a, b
 
-Image = require './image'
+Image = require './Image'
 
 
 
