@@ -1,13 +1,19 @@
+assert = require 'node:assert/strict'
+
 IntervalSet = require './IntervalSet'
 
 
 
 module.exports = class Image
-  @new: (rows, cols) ->
+  @new: (rows, cols, data=undefined) ->
     img = new Image()
     img.rows = rows
     img.cols = cols
-    img.data = (new IntervalSet() for _ in [ 0 ... rows ])
+    img.data = if data
+      assert.deepStrictEqual rows, data.length
+      data.map (e) -> new IntervalSet e
+    else
+      new IntervalSet() for _ in [ 0 ... rows ]
     img.orig =
       width: cols
       height: rows
@@ -68,7 +74,6 @@ module.exports = class Image
     fs = require 'node:fs/promises'
     {PNG} = require 'pngjs'
     img = new Image()
-    img.filename = filename
     img.orig = PNG.sync.read await fs.readFile filename
     img.loadOrig margin, threshold
     img
@@ -80,27 +85,25 @@ module.exports = class Image
     await fs.writeFile file, PNG.sync.write @orig
     this
 
+  @fromObj: (obj) ->
+    return Image.new obj.rows, obj.cols, obj.data
+
   @loadJson: (filename) ->
     fs = require 'node:fs/promises'
-    img = new Image()
     try
-      Object.assign img, JSON.parse await fs.readFile filename
+      return Image.fromObj JSON.parse await fs.readFile filename
     catch err
       console.error "ERROR reading #{filename}"
       throw err
-    img.data = img.data.map (e) -> new IntervalSet e
-    img.filename = filename
-    img.outdatedOrig = true
-    img
+
+  toObj: =>
+    rows: @rows
+    cols: @cols
+    data: (@data.map (e)->e.intset)
 
   saveJson: (file) =>
     fs = require 'node:fs/promises'
-    await fs.writeFile file, JSON.stringify
-      rows: @rows
-      cols: @cols
-      data: (@data.map (e)->e.intset)
-      outdatedOrig: true
-      orig: (Object.assign {}, @orig, {data:[]})
+    await fs.writeFile file, JSON.stringify @toObj()
     this
 
   blurImg: (radius, threshold=32) =>
@@ -224,5 +227,5 @@ module.exports = class Image
       rd = @rowHDistance r, mid
       if rd >=0
         minpx = Math.min minpx, rd
-    (minpx is @cols) and throw "ERROR: minpx is @cols (no intersection) #{JSON.stringify {hA,mid,hB,f:@filename}}"
+    (minpx is @cols) and throw "ERROR: minpx is @cols (no intersection) #{JSON.stringify {hA,mid,hB}}"
     minpx

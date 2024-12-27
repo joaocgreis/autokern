@@ -16,23 +16,19 @@ ALGO_GROW_HSTRECH = 2
 
 
 
-kernWorker = (prefix, left, right, tmpf, RUN_KERN, font, CACHE_DIR) ->
+kernWorker = (prefix, left, right, tmpf, RUN_KERN, font) ->
   (not prefix) and throw new Error "ERROR: worker missing expected prefix"
   (not left) and throw new Error "ERROR: worker missing expected left"
   (not right) and throw new Error "ERROR: worker missing expected right"
   (not tmpf) and throw new Error "ERROR: worker missing expected tmpf"
   (not RUN_KERN) and throw new Error "ERROR: worker missing expected RUN_KERN"
   (not font) and throw new Error "ERROR: worker missing expected font"
-  (not CACHE_DIR) and throw new Error "ERROR: worker missing expected CACHE_DIR"
 
-  jsonfilename = await toImg prefix, "#{left}#{right}", {[left]:{[right]:RUN_KERN}}, tmpf, font, CACHE_DIR
-
-  ALGO_DEBUG and console.log 'kernWorker', JSON.stringify {jsonfilename, tmpf}
-  img = await Image.loadJson jsonfilename
-  ALGO_DEBUG and console.log "Processing #{img.filename}..."
+  img = await toImg prefix, "#{left}#{right}", {[left]:{[right]:RUN_KERN}}, tmpf, font
+  ALGO_DEBUG and console.log "Processing #{tmpf}..."
 
   hA = img.hAreasImg()
-  (hA.length isnt 2) and throw new Error "ERROR: hA.length isnt 2 #{JSON.stringify {hA,jsonfilename,tmpf}}"
+  (hA.length isnt 2) and throw new Error "ERROR: hA.length isnt 2 #{JSON.stringify {hA,tmpf}}"
   mid = Math.floor (hA[0].e + hA[1].s) / 2
   minpx = img.minHDistance mid
   leftcenter = img.avgImgWeight mid
@@ -63,8 +59,8 @@ kernWorker = (prefix, left, right, tmpf, RUN_KERN, font, CACHE_DIR) ->
   img.growImg ALGO_GROW, ALGO_GROW_HADD, ALGO_GROW_HSTRECH
   ALGO_DEBUG and await img.savePng tmpfile "#{tmpf}_z1.png"
   hB = img.hAreasImg()
-  (hB.length isnt 2) and throw new Error "ERROR: hB.length isnt 2 #{JSON.stringify {hA,mid,hB,jsonfilename,tmpf}}"
-  not (hB[0].e < mid < hB[1].s) and throw new Error "ERROR: not (hB[0].e < mid < hB[1].s) #{JSON.stringify {hA,mid,hB,jsonfilename,tmpf}}"
+  (hB.length isnt 2) and throw new Error "ERROR: hB.length isnt 2 #{JSON.stringify {hA,mid,hB,tmpf}}"
+  not (hB[0].e < mid < hB[1].s) and throw new Error "ERROR: not (hB[0].e < mid < hB[1].s) #{JSON.stringify {hA,mid,hB,tmpf}}"
   grownpx = img.minHDistance mid
 
   return { minpx, centerpx, grownpx, rowdiffs, min_i_row, max_i_row }

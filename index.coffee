@@ -19,7 +19,6 @@ pool = workerpool.pool './worker.js', { workerType: 'process' }
 CALIBRATION_LOW_KERN = 100
 CALIBRATION_HIGH_KERN = 2100
 RUN_KERN = CALIBRATION_HIGH_KERN
-CACHE_DIR = 'cache'
 
 ALGO_KEEP_POS = true
 
@@ -75,8 +74,7 @@ CAL_LEFT = '𐑐'
 CAL_RIGHT = '𐑨'
 [img100, img4100] = await Promise.all (
   for ck in [ CALIBRATION_LOW_KERN, CALIBRATION_HIGH_KERN ]
-    (toImg 'CALIBRATION', "#{CAL_LEFT}#{CAL_RIGHT}", {[CAL_LEFT]:{[CAL_RIGHT]:ck}}, "_c_#{ck}", font, CACHE_DIR)
-      .then Image.loadJson
+    toImg 'CALIBRATION', "#{CAL_LEFT}#{CAL_RIGHT}", {[CAL_LEFT]:{[CAL_RIGHT]:ck}}, "_c_#{ck}", font
 )
 h100 = img100.hAreasImg()
 h4100 = img4100.hAreasImg()
@@ -97,7 +95,7 @@ worker_results = await Promise.all (
     for right in KERNCHARS
       do (left, right, this_i = progress_i++) ->
         strid = "#{1 + this_i}/#{KERNCHARS.length * KERNCHARS.length}"
-        worker_res = await kernWorker strid, left, right, "_f_#{this_i}", RUN_KERN, font, CACHE_DIR
+        worker_res = await kernWorker strid, left, right, "_f_#{this_i}", RUN_KERN, font
         # kernAfter left, right, worker_res.kernpx, strid
         # console.log "(#{strid}) #{JSON.stringify worker_res}"
         console.log "(#{strid}) Processed."
@@ -148,17 +146,6 @@ await fs.writeFile "#{font.file.name}_kern.json", JSON.stringify kernDefs, null,
 
 
 
-# acc = avgImgWeight img, t
-# for r in [ 0 ... img.rows ]
-#   racc = avgRowWeight img, r, t
-#   img.data[ r ][ acc ] = 0
-#   img.data[ r ][ acc+1 ] = 255
-#   img.data[ r ][ racc ] = 0
-#   img.data[ r ][ racc+1 ] = 255
-# img.savePng 'out.png', 0
-
-
-
 t=[]
 
 t.push 'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nunc laoreet purus nisi, id fermentum nisl convallis mollis. Vivamus suscipit gravida nisl et consequat. Vestibulum pharetra eu turpis ac lacinia. Curabitur lacinia magna at odio blandit, eu sollicitudin augue consequat. Mauris pulvinar velit nec ligula molestie pulvinar. Phasellus ut mollis orci. In at mollis ante. In vitae lacinia nulla. Nunc vel dignissim odio. Ut at pellentesque nulla. Fusce semper auctor dui ac ultricies. Pellentesque eget nunc non diam molestie placerat.'
@@ -206,3 +193,5 @@ await fs.copyFile genpdf, "#{font.file.name}_tester_default.pdf"
 genpdf = await texFile 'TESTER', "_tester_autokern", (t.join ' \n'), kernDefs, font
 await fs.copyFile genpdf, "#{font.file.name}_tester_autokern.pdf"
 await kernFile "#{font.file.name}_kern.tex", kernDefs
+
+pool.terminate()
