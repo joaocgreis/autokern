@@ -1,15 +1,18 @@
 fs = require 'node:fs/promises'
 path = require 'path'
 
+tmpfile = require './lib/tmpfile'
 Image = require './lib/Image'
 { texFile, kernFile, toImg } = require './lib/teximg'
 
-
-
-if process.argv.length isnt 3
-  console.error "Use:\nnode #{__dirname} FONT_FILE"
-  process.exit -1
-FONT = path.basename process.argv[2]
+workerpool = require 'workerpool'
+pool = workerpool.pool './worker.js', { workerType: 'process' }
+{ kernWorker } = await pool.proxy()
+# { kernWorker } = require './lib/kernalgorithm'
+# console.log pool.stats()
+# setInterval (->
+#   console.log pool.stats()
+# ), 1000
 
 
 
@@ -17,10 +20,27 @@ CALIBRATION_LOW_KERN = 100
 CALIBRATION_HIGH_KERN = 2100
 RUN_KERN = CALIBRATION_HIGH_KERN
 CACHE_DIR = 'cache'
-SHAVIANCHARS = [ ('𐑐'.codePointAt 0) .. ('𐑿'.codePointAt 0) ].map (c) -> String.fromCodePoint c
-KERNCHARS = SHAVIANCHARS
 
 ALGO_KEEP_POS = true
+
+
+
+if process.argv.length isnt 3
+  console.error "Use:\nnode #{__dirname} FONT_FILE"
+  process.exit -1
+
+
+
+console.log 'Loading font information...'
+font = { file: { arg: process.argv[2], real: await fs.realpath process.argv[2] } }
+Object.assign font.file, path.parse font.file.real
+fontdata = await fs.readFile font.file.real
+font.hash = require('crypto').createHash('sha512').update(fontdata).digest('hex')
+loadedfont = (require 'fonteditor-core').Font.create fontdata, {type: font.file.ext[1..]}
+font.chars = (Object.keys loadedfont.data.cmap).map (c) -> String.fromCodePoint c
+await fs.writeFile (tmpfile "font.json"), JSON.stringify font, null, 2
+await fs.writeFile (tmpfile "charlist.txt"), ("#{JSON.stringify ch}\n" for ch in font.chars).join ''
+console.log "Loaded #{font.file.real}"
 
 
 
@@ -45,15 +65,8 @@ kernAfter = (left, right, strid, kernpx) ->
 
 
 
-console.log "Loading font information for '#{FONT}'..."
-fontdata = await fs.readFile FONT
-fontsha = require('crypto').createHash('sha1').update(fontdata).digest('hex')
-fontinfo = (require 'fonteditor-core').Font.create fontdata, {type: ((FONT.match /\.([-_a-zA-Z0-9]*)$/i)[1])}
-fontinfo.chars = (Object.keys fontinfo.data.cmap).map (c) -> String.fromCodePoint c
-charlist = []
-charlist.push "#{JSON.stringify ch}\n" for ch in fontinfo.chars
-await fs.writeFile "_charlist.txt", charlist.join ''
-console.log "Done."
+SHAVIANCHARS = [ ('𐑐'.codePointAt 0) .. ('𐑿'.codePointAt 0) ].map (c) -> String.fromCodePoint c
+KERNCHARS = SHAVIANCHARS
 
 
 
@@ -62,7 +75,7 @@ CAL_LEFT = '𐑐'
 CAL_RIGHT = '𐑨'
 [img100, img4100] = await Promise.all (
   for ck in [ CALIBRATION_LOW_KERN, CALIBRATION_HIGH_KERN ]
-    (toImg 'CALIBRATION', "#{CAL_LEFT}#{CAL_RIGHT}", {[CAL_LEFT]:{[CAL_RIGHT]:ck}}, "_c_#{ck}", FONT, fontsha, CACHE_DIR)
+    (toImg 'CALIBRATION', "#{CAL_LEFT}#{CAL_RIGHT}", {[CAL_LEFT]:{[CAL_RIGHT]:ck}}, "_c_#{ck}", font, CACHE_DIR)
       .then Image.loadJson
 )
 h100 = img100.hAreasImg()
@@ -78,30 +91,18 @@ console.log "Calibrated: #{CALIBRATION_PX_PER_KERN} px/kern"
 
 
 
-workerpool = require 'workerpool'
-pool = workerpool.pool './worker.js', { workerType: 'process' }
-{ kernWorker } = await pool.proxy()
-# { kernWorker } = require './lib/kernalgorithm'
-
-# console.log pool.stats()
-# setInterval (->
-#   console.log pool.stats()
-# ), 1000
-
 progress_i = 0
 worker_results = await Promise.all (
   for left in KERNCHARS
     for right in KERNCHARS
       do (left, right, this_i = progress_i++) ->
         strid = "#{1 + this_i}/#{KERNCHARS.length * KERNCHARS.length}"
-        worker_res = await kernWorker strid, left, right, "_f_#{this_i}", RUN_KERN, FONT, fontsha, CACHE_DIR
+        worker_res = await kernWorker strid, left, right, "_f_#{this_i}", RUN_KERN, font, CACHE_DIR
         # kernAfter left, right, worker_res.kernpx, strid
         # console.log "(#{strid}) #{JSON.stringify worker_res}"
         console.log "(#{strid}) Processed."
         return { left, right, strid, worker_res }
 ).flat()
-
-pool.terminate()
 
 g_diffpx = []
 g_min_i_row = worker_results[0].worker_res.min_i_row
@@ -142,8 +143,8 @@ for { left, right, strid, worker_res } in worker_results
 
 
 
-await fs.writeFile "#{FONT}_kern.json", JSON.stringify kernDefs, null, 2
-# kernDefs = JSON.parse await fs.readFile "#{FONT}_kern.json", 'utf8'
+await fs.writeFile "#{font.file.name}_kern.json", JSON.stringify kernDefs, null, 2
+# kernDefs = JSON.parse await fs.readFile "#{font.file.name}_kern.json", 'utf8'
 
 
 
@@ -200,8 +201,8 @@ t.push '---'
 t.push ''
 t.push fontinfo.chars.join ' '
 
-genpdf = await texFile 'TESTER', "_tester_default", (t.join ' \n'), {}, FONT
-await fs.copyFile genpdf, "#{FONT}_tester_default.pdf"
-genpdf = await texFile 'TESTER', "_tester_autokern", (t.join ' \n'), kernDefs, FONT
-await fs.copyFile genpdf, "#{FONT}_tester_autokern.pdf"
-await kernFile "#{FONT}_kern.tex", kernDefs
+genpdf = await texFile 'TESTER', "_tester_default", (t.join ' \n'), {}, font
+await fs.copyFile genpdf, "#{font.file.name}_tester_default.pdf"
+genpdf = await texFile 'TESTER', "_tester_autokern", (t.join ' \n'), kernDefs, font
+await fs.copyFile genpdf, "#{font.file.name}_tester_autokern.pdf"
+await kernFile "#{font.file.name}_kern.tex", kernDefs

@@ -1,11 +1,12 @@
 assert = require 'node:assert/strict'
 
+tmpfile = require './tmpfile'
 Image = require './Image'
-{ toImg, tmpPathJoin } = require './teximg'
+{ toImg } = require './teximg'
 
 
 
-ALGO_DEBUG = true
+ALGO_DEBUG = false
 
 ALGO_BLUR = 10
 ALGO_THRESHOLD = 128
@@ -15,17 +16,16 @@ ALGO_GROW_HSTRECH = 2
 
 
 
-kernWorker = (prefix, left, right, tmpf, RUN_KERN, FONT, fontsha, CACHE_DIR) ->
+kernWorker = (prefix, left, right, tmpf, RUN_KERN, font, CACHE_DIR) ->
   (not prefix) and throw new Error "ERROR: worker missing expected prefix"
   (not left) and throw new Error "ERROR: worker missing expected left"
   (not right) and throw new Error "ERROR: worker missing expected right"
   (not tmpf) and throw new Error "ERROR: worker missing expected tmpf"
   (not RUN_KERN) and throw new Error "ERROR: worker missing expected RUN_KERN"
-  (not FONT) and throw new Error "ERROR: worker missing expected FONT"
-  (not fontsha) and throw new Error "ERROR: worker missing expected fontsha"
+  (not font) and throw new Error "ERROR: worker missing expected font"
   (not CACHE_DIR) and throw new Error "ERROR: worker missing expected CACHE_DIR"
 
-  jsonfilename = await toImg prefix, "#{left}#{right}", {[left]:{[right]:RUN_KERN}}, tmpf, FONT, fontsha, CACHE_DIR
+  jsonfilename = await toImg prefix, "#{left}#{right}", {[left]:{[right]:RUN_KERN}}, tmpf, font, CACHE_DIR
 
   ALGO_DEBUG and console.log 'kernWorker', JSON.stringify {jsonfilename, tmpf}
   img = await Image.loadJson jsonfilename
@@ -58,10 +58,10 @@ kernWorker = (prefix, left, right, tmpf, RUN_KERN, FONT, fontsha, CACHE_DIR) ->
   rowdiffs = (img.rowHDistance r, mid for r in [ 0 ... img.rows ])
 
   # img.blurImg ALGO_BLUR, ALGO_THRESHOLD
-  # ALGO_DEBUG and await img.savePng tmpPathJoin "#{tmpf}_z0.png"
+  # ALGO_DEBUG and await img.savePng tmpfile "#{tmpf}_z0.png"
 
   img.growImg ALGO_GROW, ALGO_GROW_HADD, ALGO_GROW_HSTRECH
-  ALGO_DEBUG and await img.savePng tmpPathJoin "#{tmpf}_z1.png"
+  ALGO_DEBUG and await img.savePng tmpfile "#{tmpf}_z1.png"
   hB = img.hAreasImg()
   (hB.length isnt 2) and throw new Error "ERROR: hB.length isnt 2 #{JSON.stringify {hA,mid,hB,jsonfilename,tmpf}}"
   not (hB[0].e < mid < hB[1].s) and throw new Error "ERROR: not (hB[0].e < mid < hB[1].s) #{JSON.stringify {hA,mid,hB,jsonfilename,tmpf}}"
